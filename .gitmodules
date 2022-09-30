@@ -1,0 +1,6 @@
+[submodule "rust-libs/rust-typed-arena"]
+	path = rust-libs/rust-typed-arena
+	url = https://github.com/SimonSapin/rust-typed-arena.git
+[submodule "rust-libs/rayon"]
+	path = rust-libs/rayon
+	url = https://github.com/rayon-rs/rayon.git

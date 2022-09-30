@@ -1,0 +1,2 @@
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "opt-level=3", "-C", "target-cpu=native", "-C", "embed-bitcode=yes", "-C", "lto", "-C", "codegen-units=1"]
