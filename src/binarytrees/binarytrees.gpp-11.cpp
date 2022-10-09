@@ -1,10 +1,11 @@
-#include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
 #include <vector>
-#include <deque>
-// #include <apr_pools.h>
+#include <algorithm>
+#include <execution>
 #include "arena.h"
+
+constexpr size_t LINE_SIZE = 64;
 
 struct Node
 {
@@ -21,41 +22,107 @@ struct Node
     }
 };
 
-class NodePool
+template <typename T>
+struct CountingIterator
 {
-public:
-    NodePool()
+    using iterator_category = std::random_access_iterator_tag;
+    using difference_type = T;
+    using value_type = T;
+    using pointer = T *;               // or also value_type*
+    using reference = T &;             // or also value_type&
+    using const_reference = const T &; // or also value_type&
+
+    CountingIterator(value_type ptr) : m_value(ptr) {}
+
+    reference operator*() { return m_value; }
+    const_reference operator*() const { return m_value; }
+    pointer operator->() { return &m_value; }
+    value_type operator[](difference_type off) const { return m_value + off; }
+
+    // Prefix increment
+    CountingIterator &operator++()
     {
-        // apr_pool_create_unmanaged(&pool);
+        ++m_value;
+        return *this;
     }
 
-    ~NodePool()
+    // Postfix increment
+    CountingIterator operator++(int)
     {
-        // apr_pool_destroy(pool);
+        CountingIterator tmp = *this;
+        ++(*this);
+        return tmp;
     }
 
-    Node *alloc()
+    CountingIterator &operator--()
     {
-        // return (Node *)apr_palloc(pool, sizeof(Node));
-        return &pool.alloc(Node());
-        // return &pool.emplace_back();
+        --m_value;
+        return *this;
     }
 
-    void clear()
+    CountingIterator operator--(int)
     {
-        // apr_pool_clear(pool);
-        // pool.clear();
+        CountingIterator tmp = *this;
+        --*this;
+        return tmp;
+    }
+
+    CountingIterator &operator+=(difference_type off)
+    {
+        m_value += off;
+        return *this;
+    }
+    CountingIterator operator+(difference_type off) const { return CountingIterator(m_value + off); }
+    friend CountingIterator operator+(difference_type off, const CountingIterator &right)
+    {
+        return CountingIterator(off + right.m_value);
+    }
+
+    CountingIterator &operator-=(difference_type off)
+    {
+        m_value -= off;
+        return *this;
+    }
+
+    CountingIterator operator-(difference_type off) const
+    {
+        return CountingIterator(m_value - off);
+    }
+
+    difference_type operator-(const CountingIterator &right) const
+    {
+        return m_value - right.m_value;
+    }
+
+    friend bool operator==(const CountingIterator &a, const CountingIterator &b) { return a.m_value == b.m_value; };
+    friend bool operator!=(const CountingIterator &a, const CountingIterator &b) { return a.m_value != b.m_value; };
+    bool operator<(const CountingIterator &r) const
+    {
+        return m_value < r.m_value;
+    }
+
+    bool operator<=(const CountingIterator &r) const
+    {
+        return m_value <= r.m_value;
+    }
+
+    bool operator>(const CountingIterator &r) const
+    {
+        return m_value > r.m_value;
+    }
+
+    bool operator>=(const CountingIterator &r) const
+    {
+        return m_value >= r.m_value;
     }
 
 private:
-    // apr_pool_t *pool;
-    Arena<Node> pool;
-    // std::deque<Node> pool;
+    value_type m_value;
 };
 
-Node *make(int d, NodePool &store)
+Node *make(int d, Arena<Node> &store)
 {
-    Node * root = store.alloc();
+    Node *root = &store.alloc(Node());
     if (d > 0)
     {
         root->l = make(d - 1, store);
@@ -66,45 +133,47 @@ Node *make(int d, NodePool &store)
 
 int main(int argc, char *argv[])
 {
-    std::ios_base::sync_with_stdio(false);
-    const int min_depth = 4;
-    const int max_depth = std::max(min_depth + 2,
-                                   (argc == 2 ? atoi(argv[1]) : 10));
-    const int stretch_depth = max_depth + 1;
+    constexpr int min_depth = 4;
+    const int max_depth = std::max(min_depth + 2, (argc == 2 ? atoi(argv[1]) : 10));
 
     // Alloc then dealloc stretchdepth tree
     {
-        NodePool store;
+        Arena<Node> store;
+        const int stretch_depth = max_depth + 1;
         Node *c = make(stretch_depth, store);
-        std::cout << "stretch tree of depth " << stretch_depth << "\t "
-                  << "check: " << c->check() << std::endl;
+        printf("stretch tree of depth %d\t check: %d\n", stretch_depth, c->check());
     }
 
-    NodePool long_lived_store;
+    Arena<Node> long_lived_store;
     Node *long_lived_tree = make(max_depth, long_lived_store);
 
-    int d, i = 0;
-    std::vector<int> cres(max_depth / 2 + 1, 0);
-    // #pragma omp parallel for collapse(2) shared(cres, min_depth, max_depth) private(d, i) default(none)
-    for (d = min_depth / 2; d <= max_depth / 2; ++d)
-    {
-        // const auto iterations = ;
-        for (i = 1; i <= (1 << (max_depth - (2 * d) + min_depth)); ++i)
-        {
-            // Create a memory pool for this thread to use.
-            NodePool store;
-            Node *a = make(2 * d, store);
-            // c += a->check();
-            cres[d] += a->check();
-        }
-    }
+    // buffer to store output of each thread
+    char *__restrict__ outputstr = reinterpret_cast<char *>(malloc(LINE_SIZE * (max_depth / 2 + 1) * sizeof(char)));
 
-    // print all results
-    for (d = min_depth / 2; d <= max_depth / 2; ++d)
-    {
-        std::cout << (1 << (max_depth - (2 * d) + min_depth)) << "\t trees of depth " << 2 * d
-                  << "\t check: " << cres[d] << std::endl;
-    }
-    std::cout << "long lived tree of depth " << max_depth << "\t check: " << long_lived_tree->check() << std::endl;
+    std::for_each(
+        std::execution::par,
+        CountingIterator(min_depth / 2), CountingIterator(max_depth / 2 + 1),
+        [total_d = max_depth + min_depth, outputstr](const auto d)
+        {
+            const auto iterations = 1 << (total_d - (2 * d));
+            const auto c = std::transform_reduce(
+                std::execution::par, CountingIterator(0),
+                CountingIterator(iterations), 0L, std::plus{},
+                [depth = 2 * d](auto _)
+                {
+                    Arena<Node> store;
+                    Node *a = make(depth, store);
+                    return a->check();
+                });
+            // each thread write to separate location
+            sprintf(outputstr + LINE_SIZE * d, "%d\t trees of depth %d\t check: %ld\n",
+                    iterations, d, c);
+        });
+
+    for (int d = min_depth / 2; d <= max_depth / 2; ++d)
+        printf("%s", outputstr + (d * LINE_SIZE));
+
+    printf("long lived tree of depth %d\t check: %d\n", max_depth, long_lived_tree->check());
+    free(outputstr);
     return 0;
 }

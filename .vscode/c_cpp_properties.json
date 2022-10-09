@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include/apr-1.0/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++-12",
+            "cStandard": "c17",
+            "intelliSenseMode": "linux-clang-x64",
+            "cppStandard": "c++23",
+            "compilerArgs": []
+        }
+    ],
+    "version": 4
+}
